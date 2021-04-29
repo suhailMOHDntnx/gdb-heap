@@ -7,6 +7,7 @@ from heap import WrappedPointer, caching_lookup_type, Usage, \
     type_void_ptr, fmt_addr, Category, looks_like_ptr, \
     WrongInferiorProcess, Table
 
+from .common import to_int
 
 SIZEOF_VOID_P = type_void_ptr.sizeof
 
@@ -170,9 +171,9 @@ class PyPoolPtr(WrappedPointer):
         freeblock = self.field('freeblock')
         _type_block_ptr_ptr = caching_lookup_type('unsigned char').pointer().pointer()
         # Walk the singly-linked list of free blocks for this chunk
-        while int(freeblock) != 0:
+        while to_int(freeblock) != 0:
             # print 'freeblock:', (fmt_addr(int(freeblock)), int(size))
-            yield (int(freeblock), int(size))
+            yield (to_int(freeblock), to_int(size))
             freeblock = freeblock.cast(_type_block_ptr_ptr).dereference()
 
     def _free_blocks(self):
@@ -195,8 +196,8 @@ class PyPoolPtr(WrappedPointer):
         while offset < nextoffset:
             addr = base_addr + offset
             # Filter out those within this pool's linked list of free blocks:
-            if int(addr) not in free_block_addresses:
-                yield (int(addr), int(size))
+            if to_int(addr) not in free_block_addresses:
+                yield (to_int(addr), to_int(size))
             offset += size
 
 
@@ -251,7 +252,7 @@ class PyObjectPtr(WrappedPointer):
     def as_malloc_addr(self):
         ob_type = addr['ob_type']
         tp_flags = ob_type['tp_flags']
-        addr = int(self._gdbval)
+        addr = to_int(self._gdbval)
         if tp_flags & Py_TPFLAGS_: # FIXME
             return obj_addr_to_gc_addr(addr)
         else:
@@ -267,7 +268,7 @@ def _PyObject_VAR_SIZE(typeobj, nitems):
              ) & ~(SIZEOF_VOID_P - 1)
            ).cast(type_size_t)
 def int_from_int(gdbval):
-    return int(gdbval)
+    return to_int(gdbval)
 
 class PyUnicodeObjectPtr(PyObjectPtr):
     """
@@ -277,7 +278,7 @@ class PyUnicodeObjectPtr(PyObjectPtr):
     _typename = 'PyUnicodeObject'
 
     def categorize_refs(self, usage_set, level=0, detail=None):
-        m_str = int(self.field('str'))
+        m_str = to_int(self.field('str'))
         usage_set.set_addr_category(m_str,
                                     Category('cpython', 'PyUnicodeObject buffer', detail),
                                     level)
@@ -291,7 +292,7 @@ class PyDictObjectPtr(PyObjectPtr):
     _typename = 'PyDictObject'
 
     def categorize_refs(self, usage_set, level=0, detail=None):
-        ma_table = int(self.field('ma_table'))
+        ma_table = to_int(self.field('ma_table'))
         usage_set.set_addr_category(ma_table,
                                     Category('cpython', 'PyDictEntry table', detail),
                                     level)
@@ -329,7 +330,7 @@ class PyInstanceObjectPtr(PyObjectPtr):
         _type_PyDictObject_ptr = caching_lookup_type('PyDictObject').pointer()
         in_dict = in_dict.cast(_type_PyDictObject_ptr)
 
-        ma_table = int(in_dict['ma_table'])
+        ma_table = to_int(in_dict['ma_table'])
 
         # Record details:
         usage_set.set_addr_category(ma_table,
@@ -428,7 +429,7 @@ def obj_addr_to_gc_addr(addr):
     (i.e. the allocator's view of the same)'''
     #print 'obj_addr_to_gc_addr(%s)' % fmt_addr(int(addr))
     _type_PyGC_Head = caching_lookup_type('PyGC_Head')
-    return int(addr) - _type_PyGC_Head.sizeof
+    return to_int(addr) - _type_PyGC_Head.sizeof
 
 def as_python_object(addr):
     '''Given an address of an allocation, determine if it holds a PyObject,
@@ -535,7 +536,7 @@ def python_categorization(usage_set):
     try:
         val_interned = gdb.parse_and_eval('interned')
         pyop = PyDictObjectPtr.from_pyobject_ptr(val_interned)
-        ma_table = int(pyop.field('ma_table'))
+        ma_table = to_int(pyop.field('ma_table'))
         usage_set.set_addr_category(ma_table,
                                     Category('cpython', 'PyDictEntry table', 'interned'),
                                     level=1)
@@ -550,8 +551,8 @@ def python_categorization(usage_set):
         val_block_list = gdb.parse_and_eval('block_list')
         if str(val_block_list.type.target()) != 'PyIntBlock':
             raise RuntimeError
-        while int(val_block_list) != 0:
-            usage_set.set_addr_category(int(val_block_list),
+        while to_int(val_block_list) != 0:
+            usage_set.set_addr_category(to_int(val_block_list),
                                         Category('cpython', '_intblock', ''),
                                         level=0)
             val_block_list = val_block_list['next']

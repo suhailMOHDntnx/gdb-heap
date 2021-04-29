@@ -36,6 +36,10 @@ def need_debuginfo(f):
             print('Missing debuginfo for %s' % e.module)
             print('Suggested fix:')
             print('    debuginfo-install %s' % e.module)
+        except Exception:
+          import traceback
+          traceback.print_exc()
+          raise
     return g
 
 class Heap(gdb.Command):

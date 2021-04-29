@@ -22,6 +22,8 @@ import gdb
 from heap import caching_lookup_type, looks_like_ptr
 from heap.compat import execute
 
+from .common import to_int, to_long
+
 void_ptr_ptr = caching_lookup_type('void').pointer().pointer()
 
 def get_class_name(addr, size):
@@ -30,7 +32,11 @@ def get_class_name(addr, size):
     if not looks_like_ptr(vtable):
         return None
 
-    info = execute('info sym (void *)0x%x' % int(vtable))
+    #print vtable
+    #str_ = 'info sym (void *)0x%x' % to_long(vtable)
+    #print str_
+    #print to_int(vtable)
+    info = execute('info sym (void *)0x%x' % to_long(vtable))
     # "vtable for Foo + 8 in section .rodata of /home/david/heap/test_cplusplus"
     m = re.match('vtable for (.*) \+ (.*)', info)
     if m:

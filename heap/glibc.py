@@ -26,7 +26,7 @@ This file is licenced under the LGPLv2.1
 import re
 
 import gdb
-
+from .common import to_int
 from heap import WrappedPointer, WrappedValue, caching_lookup_type, \
     type_char_ptr, check_missing_debuginfo, array_length, offsetof
 
@@ -68,7 +68,7 @@ class MChunkPtr(WrappedPointer):
 
     def size(self):
         if not(hasattr(self, '_cached_size')):
-            self._cached_size = int(self.field('size'))
+            self._cached_size = to_int(self.field('size'))
         return self._cached_size
 
     def chunksize(self):
@@ -112,7 +112,7 @@ class MChunkPtr(WrappedPointer):
     def as_mem(self):
         # Analog of chunk2mem: the address as seen by the program (e.g. malloc)
         SIZE_SZ = caching_lookup_type('size_t').sizeof
-        return self.as_address() + (2 * SIZE_SZ)
+        return int(self.as_address() + (2 * SIZE_SZ))
 
     def is_inuse(self):
         # Is this chunk is use?
@@ -238,7 +238,7 @@ class MallocState(WrappedValue):
         # sbrk_base is NULL when no small allocations have happened:
         if chunk.as_address() > 0:
             # Iterate upwards until you reach "top":
-            top = int(self.field('top'))
+            top = to_int(self.field('top'))
             while chunk.as_address() != top:
                 yield chunk
                 # print '0x%x' % chunk.as_address(), chunk
@@ -311,7 +311,8 @@ class MallocPar(WrappedValue):
 def sbrk_base():
     mp_ = MallocPar.get()
     try:
-        return int(mp_.field('sbrk_base'))
+        print type(mp_.field('sbrk_base'))
+        return int(mp_.field('sbrk_base').cast(gdb.lookup_type('long')))
     except RuntimeError as e:
         check_missing_debuginfo(e, 'glibc')
         raise e
@@ -383,7 +384,7 @@ def iter_mmap_heap_chunks(pid):
     process (by PID) by reading /proc/PID/maps
 
     Yield a sequence of (start, end) pairs'''
-    for line in open('/proc/%i/maps' % pid):
+    for line in open('./maps.%d' % pid):
         # print line,
         # e.g.:
         # 38e441e000-38e441f000 rw-p 0001e000 fd:01 1087                           /lib64/ld-2.11.1.so

@@ -41,6 +41,8 @@ except ImportError:
     # Support importing heap.parser from outside gdb
     pass
 
+from .common import to_int
+
 
 class WrongInferiorProcess(RuntimeError):
     def __init__(self, hint):
@@ -88,7 +90,7 @@ def offsetof(typename, fieldname):
     v = gdb.Value(0)
     v = v.cast(t)
     field = v[fieldname].cast(type_void_ptr)
-    return int(field.address)
+    return to_int(field.address)
 
 class MissingDebuginfo(RuntimeError):
     def __init__(self, module):
@@ -144,14 +146,14 @@ class WrappedValue(object):
         return WrappedValue(self._gdbval.dereference())
 
 #    def address(self):
-#        return int(self._gdbval.cast(type_void_ptr))
+#        return to_int(self._gdbval.cast(type_void_ptr))
 
     def is_null(self):
-        return int(self._gdbval) == 0
+        return to_int(self._gdbval) == 0
 
 class WrappedPointer(WrappedValue):
     def as_address(self):
-        return int(self._gdbval.cast(type_void_ptr))
+        return to_int(self._gdbval.cast(type_void_ptr))
 
     def __str__(self):
         return ('<%s for inferior 0x%x>'
@@ -261,7 +263,7 @@ def hexdump_as_bytes(addr, size, chars_only=True):
     bytebuf = []
     for j in range(size):
         ptr = addr + j
-        b = int(ptr.dereference())
+        b = to_int(ptr.dereference())
         bytebuf.append(b)
 
     result = ''
@@ -282,7 +284,7 @@ def hexdump_as_int(addr, count):
         longbuf.append(long)
         bptr = gdb.Value(ptr).cast(type_unsigned_char_ptr)
         for i in range(sizeof_ptr):
-            bytebuf.append(int((bptr + i).dereference()))
+            bytebuf.append(to_int((bptr + i).dereference()))
     return (' '.join([fmt_addr(int) for long in longbuf])
             + ' |'
             + ''.join([as_hexdump_char(b) for b in bytebuf])
@@ -342,7 +344,7 @@ class UsageSet(object):
         self.usage_list = usage_list
 
         # Ensure we can do fast lookups:
-        self.usage_by_address = dict([(int(u.start), u) for u in usage_list])
+        self.usage_by_address = dict([(to_int(u.start), u) for u in usage_list])
 
     def set_addr_category(self, addr, category, level=0, visited=None, debug=False):
         '''Attempt to mark the given address as being of the given category,
@@ -408,14 +410,14 @@ class PythonCategorizer(object):
 
         if c.kind == 'list':
             list_ptr = gdb.Value(u.start + self._type_PyGC_Head.sizeof).cast(self._type_PyListObject_ptr)
-            ob_item = int(list_ptr['ob_item'])
+            ob_item = to_int(list_ptr['ob_item'])
             usage_set.set_addr_category(ob_item,
                                         Category('cpython', 'PyListObject ob_item table', None))
             return True
 
         elif c.kind == 'set':
             set_ptr = gdb.Value(u.start + self._type_PyGC_Head.sizeof).cast(self._type_PySetObject_ptr)
-            table = int(set_ptr['table'])
+            table = to_int(set_ptr['table'])
             usage_set.set_addr_category(table,
                                         Category('cpython', 'PySetObject setentry table', None))
             return True
@@ -423,7 +425,7 @@ class PythonCategorizer(object):
         if c.kind == 'code':
             # Python 2.6's PyCode_Type doesn't have Py_TPFLAGS_HAVE_GC:
             code_ptr = gdb.Value(u.start).cast(self._type_PyCodeObject_ptr)
-            co_code =  int(code_ptr['co_code'])
+            co_code =  to_int(code_ptr['co_code'])
             usage_set.set_addr_category(co_code,
                                         Category('python', 'str', 'bytecode'), # FIXME: on py3k this should be bytes
                                         level=1)
@@ -435,7 +437,7 @@ class PythonCategorizer(object):
             from heap.sqlite import categorize_sqlite3
             for fieldname, catname, fn in (('db', 'sqlite3', categorize_sqlite3),
                                            ('st', 'sqlite3_stmt', None)):
-                field_ptr = int(obj_ptr[fieldname])
+                field_ptr = to_int(obj_ptr[fieldname])
 
                 # sqlite's src/mem1.c adds a a sqlite3_int64 (size) to the front
                 # of the allocation, so we need to look 8 bytes earlier to find
@@ -454,9 +456,9 @@ class PythonCategorizer(object):
                 obj_ptr = gdb.Value(u.start).cast(ptr_type)
                 # print obj_ptr.dereference()
                 h = obj_ptr['h']
-                if usage_set.set_addr_category(int(h), Category('rpm', 'Header', None)):
+                if usage_set.set_addr_category(to_int(h), Category('rpm', 'Header', None)):
                     blob = h['blob']
-                    usage_set.set_addr_category(int(blob), Category('rpm', 'Header blob', None))
+                    usage_set.set_addr_category(to_int(blob), Category('rpm', 'Header blob', None))
 
         elif c.kind == 'rpm.mi':
             ptr_type = caching_lookup_type('struct rpmmiObject_s').pointer()
@@ -464,11 +466,11 @@ class PythonCategorizer(object):
                 obj_ptr = gdb.Value(u.start).cast(ptr_type)
                 print(obj_ptr.dereference())
                 mi = obj_ptr['mi']
-                if usage_set.set_addr_category(int(mi),
+                if usage_set.set_addr_category(to_int(mi),
                                                Category('rpm', 'rpmdbMatchIterator', None)):
                     pass
                     #blob = h['blob']
-                    #usage_set.set_addr_category(int(blob), 'rpm Header blob')
+                    #usage_set.set_addr_category(to_int(blob), 'rpm Header blob')
 
         # Not categorized:
         return False
@@ -560,16 +562,16 @@ def categorize(u, usage_set):
     if cat:
         return cat
 
-    # C++ detection: only enabled if we can capture "execute"; there seems to
-    # be a bad interaction between pagination and redirection: all output from
-    # "heap" disappears in the fallback form of execute, unless we "set pagination off"
-    from heap.compat import has_gdb_execute_to_string
-    #  Disable for now, see https://bugzilla.redhat.com/show_bug.cgi?id=620930
-    if False: # has_gdb_execute_to_string:
-        from heap.cplusplus import get_class_name
-        cpp_cls = get_class_name(addr, size)
-        if cpp_cls:
-            return Category('C++', cpp_cls)
+    if False:
+      # C++ detection: only enabled if we can capture "execute"; there seems to
+      # be a bad interaction between pagination and redirection: all output from
+      # "heap" disappears in the fallback form of execute, unless we "set pagination off"
+      from heap.compat import has_gdb_execute_to_string
+      #  Disable for now, see https://bugzilla.redhat.com/show_bug.cgi?id=620930
+      from heap.cplusplus import get_class_name
+      cpp_cls = get_class_name(addr, size)
+      if cpp_cls:
+        return Category('C++', cpp_cls)
 
     # GObject detection:
     from heap.gobject import as_gtype_instance
@@ -605,12 +607,14 @@ class ProgressNotifier(object):
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def next(self):
         self.count += 1
         if 0 == self.count % 10000:
             print(self.msg, self.count)
-        return self.inner.__next__()
+        return self.inner.next()
 
+    def __next__(self):
+      return self.next()
 
 
 def iter_usage_with_progress():
@@ -670,7 +674,7 @@ def iter_usage():
             for u in arena.iter_usage():
                 yield u
         else:
-            yield Usage(int(mem_ptr), chunksize)
+            yield Usage(to_int(mem_ptr), chunksize)
 
     for chunk in ms.iter_sbrk_chunks():
         mem_ptr = chunk.as_mem()
@@ -682,7 +686,7 @@ def iter_usage():
                 for u in arena.iter_usage():
                     yield u
             else:
-                yield Usage(int(mem_ptr), chunksize)
+                yield Usage(to_int(mem_ptr), chunksize)
 
 
 
